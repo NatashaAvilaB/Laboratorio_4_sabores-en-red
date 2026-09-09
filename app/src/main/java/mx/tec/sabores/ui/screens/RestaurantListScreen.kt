@@ -37,14 +37,14 @@ fun RestaurantListScreen(
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-private fun ListPreview() {
-    SaboresTheme {
-        RestaurantListScreen(
-            restaurants = RestaurantRepository().getAll(),
-            summaryOf = { RatingSummary(4.2, 3) },
-            onRestaurantClick = {}
-        )
-    }
-}
+//@Preview(showBackground = true)
+//@Composable
+//private fun ListPreview() {
+//    SaboresTheme {
+//        RestaurantListScreen(
+//            restaurants = RestaurantRepository().getAll(),
+//            summaryOf = { RatingSummary(4.2, 3) },
+//            onRestaurantClick = {}
+//        )
+//    }
+//}
