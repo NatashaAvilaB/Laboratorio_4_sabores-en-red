@@ -21,6 +21,8 @@ data class Detalle(
     val restaurant: Restaurant,
     val reviews: List<Review>
 ) {
+    // La regla del dominio sigue viva: el promedio se calcula aquí, no se hereda
+    // del servidor, para que cambie al instante al publicar tu reseña.
     val summary: RatingSummary = RatingSummary.from(reviews)
 }
 
@@ -28,34 +30,40 @@ class SaboresViewModel(
     private val repository: RestaurantRepository = RestaurantRepository()
 ) : ViewModel() {
 
-    // Ya no se lee una vez al construir: ahora llega de la red, y tarda.
     var restaurantes by mutableStateOf<UiState<List<RestaurantEnLista>>>(UiState.Cargando)
         private set
 
-    var detalle by mutableStateOf<Detalle?>(null)
+    // En C3 pasa de Detalle? a UiState<Detalle>
+    var detalle by mutableStateOf<UiState<Detalle>>(UiState.Cargando)
         private set
 
     var mias by mutableStateOf<List<MyReviewItem>>(emptyList())
         private set
 
-    init { cargarRestaurantes() }
+    init {
+        cargarRestaurantes()
+    }
+
+    // Función auxiliar que atrapa IOException y HttpException para no repetir try/catch
+    private suspend fun <T> pedir(block: suspend () -> T): UiState<T> = try {
+        UiState.Exito(block())
+    } catch (e: IOException) {
+        UiState.Error("No hay conexión. Revisa tu internet.")
+    } catch (e: HttpException) {
+        UiState.Error(mensajeDe(e))
+    }
 
     fun cargarRestaurantes() {
         viewModelScope.launch {
             restaurantes = UiState.Cargando
-            restaurantes = try {
-                UiState.Exito(repository.getAllForList())
-            } catch (e: IOException) {
-                UiState.Error("No hay conexión. Revisa tu internet.")
-            } catch (e: HttpException) {
-                UiState.Error("El servidor respondió ${e.code()}.")
-            }
+            restaurantes = pedir { repository.getAllForList() }
         }
     }
 
     fun cargarDetalle(id: Int) {
         viewModelScope.launch {
-            detalle = Detalle(repository.getById(id), repository.getReviews(id))
+            detalle = UiState.Cargando
+            detalle = pedir { Detalle(repository.getById(id), repository.getReviews(id)) }
         }
     }
 }
