@@ -21,8 +21,6 @@ data class Detalle(
     val restaurant: Restaurant,
     val reviews: List<Review>
 ) {
-    // La regla del dominio sigue viva: el promedio se calcula aquí, no se hereda
-    // del servidor, para que cambie al instante al publicar tu reseña.
     val summary: RatingSummary = RatingSummary.from(reviews)
 }
 
@@ -33,18 +31,39 @@ class SaboresViewModel(
     var restaurantes by mutableStateOf<UiState<List<RestaurantEnLista>>>(UiState.Cargando)
         private set
 
-    // En C3 pasa de Detalle? a UiState<Detalle>
     var detalle by mutableStateOf<UiState<Detalle>>(UiState.Cargando)
         private set
 
-    var mias by mutableStateOf<List<MyReviewItem>>(emptyList())
+    var mias by mutableStateOf<UiState<List<MyReviewItem>>>(UiState.Cargando)
         private set
 
-    init {
-        cargarRestaurantes()
+    var mensajeAcciones by mutableStateOf<String?>(null)
+        private set
+
+    fun limpiarMensaje() {
+        mensajeAcciones = null
     }
 
-    // Función auxiliar que atrapa IOException y HttpException para no repetir try/catch
+    fun cargarMisResenas() {
+        viewModelScope.launch {
+            mias = UiState.Cargando
+            mias = pedir {
+                val listaRestaurantes: List<RestaurantEnLista> = when (val estado = restaurantes) {
+                    is UiState.Exito -> estado.datos
+                    else -> emptyList()
+                }
+                val reviews = repository.getMyReviews()
+                reviews.map { review ->
+                    MyReviewItem(
+                        restaurantName = listaRestaurantes.find { it.restaurant.id == review.restaurantId }?.restaurant?.name
+                            ?: "Restaurante",
+                        review = review
+                    )
+                }
+            }
+        }
+    }
+
     private suspend fun <T> pedir(block: suspend () -> T): UiState<T> = try {
         UiState.Exito(block())
     } catch (e: IOException) {
@@ -64,6 +83,36 @@ class SaboresViewModel(
         viewModelScope.launch {
             detalle = UiState.Cargando
             detalle = pedir { Detalle(repository.getById(id), repository.getReviews(id)) }
+        }
+    }
+
+    fun borrar(review: Review) {
+        viewModelScope.launch {
+            try {
+                val seBorro = repository.deleteReview(review.id)
+                if (seBorro) {
+                    cargarMisResenas()
+                } else {
+                    mensajeAcciones = "Esta reseña no es tuya."
+                }
+            } catch (e: IOException) {
+                mensajeAcciones = "No hay conexión. No se pudo borrar."
+            } catch (e: HttpException) {
+                mensajeAcciones = mensajeDe(e)
+            }
+        }
+    }
+
+    fun editar(id: Int, stars: Int, comment: String) {
+        viewModelScope.launch {
+            try {
+                repository.editReview(id, stars, comment)
+                cargarMisResenas()
+            } catch (e: IOException) {
+                mensajeAcciones = "No hay conexión. No se pudo editar."
+            } catch (e: HttpException) {
+                mensajeAcciones = mensajeDe(e)
+            }
         }
     }
 }

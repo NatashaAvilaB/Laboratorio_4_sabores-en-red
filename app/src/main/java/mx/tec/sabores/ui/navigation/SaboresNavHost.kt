@@ -17,14 +17,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import mx.tec.sabores.domain.Restaurant
+import mx.tec.sabores.ui.components.CargandoView
+import mx.tec.sabores.ui.components.ErrorView
 import mx.tec.sabores.ui.screens.MyReviewsScreen
 import mx.tec.sabores.ui.screens.NewReviewScreen
 import mx.tec.sabores.ui.screens.RestaurantDetailScreen
 import mx.tec.sabores.ui.screens.RestaurantListScreen
 import mx.tec.sabores.ui.state.NewReviewViewModel
 import mx.tec.sabores.ui.state.SaboresViewModel
-import mx.tec.sabores.ui.components.CargandoView
-import mx.tec.sabores.ui.components.ErrorView
 import mx.tec.sabores.ui.state.UiState
 
 @Composable
@@ -65,6 +66,7 @@ fun SaboresApp() {
         ) {
 
             composable(Route.HOME) {
+                LaunchedEffect(Unit) { viewModel.cargarRestaurantes() }
                 when (val estado = viewModel.restaurantes) {
                     is UiState.Cargando -> CargandoView()
                     is UiState.Error -> ErrorView(
@@ -79,7 +81,21 @@ fun SaboresApp() {
             }
 
             composable(Route.MY_REVIEWS) {
-                MyReviewsScreen(items = viewModel.mias)
+                LaunchedEffect(Unit) { viewModel.cargarMisResenas() }
+                when (val estado = viewModel.mias) {
+                    is UiState.Cargando -> CargandoView()
+                    is UiState.Error -> ErrorView(
+                        mensaje = estado.mensaje,
+                        onReintentar = { viewModel.cargarMisResenas() }
+                    )
+                    is UiState.Exito -> MyReviewsScreen(
+                        items = estado.datos,
+                        mensajeAcciones = viewModel.mensajeAcciones,
+                        onLimpiarMensaje = { viewModel.limpiarMensaje() },
+                        onBorrar = { review -> viewModel.borrar(review) },
+                        onEditar = { id, stars, comment -> viewModel.editar(id, stars, comment) }
+                    )
+                }
             }
 
             composable(
@@ -89,15 +105,24 @@ fun SaboresApp() {
                 val id = entry.arguments?.getInt(Route.ARG_RESTAURANT_ID) ?: return@composable
 
                 LaunchedEffect(id) { viewModel.cargarDetalle(id) }
-                val detalle = viewModel.detalle ?: return@composable
 
-                RestaurantDetailScreen(
-                    restaurant = detalle.restaurant,
-                    summary = detalle.summary,
-                    reviews = detalle.reviews,
-                    onWriteReviewClick = { nav.navigate(Route.newReview(id)) },
-                    onBack = { nav.popBackStack() }
-                )
+                when (val estado = viewModel.detalle) {
+                    is UiState.Cargando -> CargandoView()
+                    is UiState.Error -> ErrorView(
+                        mensaje = estado.mensaje,
+                        onReintentar = { viewModel.cargarDetalle(id) }
+                    )
+                    is UiState.Exito -> {
+                        val detalle = estado.datos
+                        RestaurantDetailScreen(
+                            restaurant = detalle.restaurant,
+                            summary = detalle.summary,
+                            reviews = detalle.reviews,
+                            onWriteReviewClick = { nav.navigate(Route.newReview(id)) },
+                            onBack = { nav.popBackStack() }
+                        )
+                    }
+                }
             }
 
             composable(
@@ -105,7 +130,9 @@ fun SaboresApp() {
                 arguments = listOf(navArgument(Route.ARG_RESTAURANT_ID) { type = NavType.IntType })
             ) { entry ->
                 val id = entry.arguments?.getInt(Route.ARG_RESTAURANT_ID) ?: return@composable
-                val restaurant = viewModel.detalle?.restaurant ?: return@composable
+                val detalleState = viewModel.detalle
+                if (detalleState !is UiState.Exito) return@composable
+                val restaurant = detalleState.datos.restaurant
 
                 val formViewModel: NewReviewViewModel = viewModel()
 
